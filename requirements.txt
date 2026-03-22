@@ -5,6 +5,8 @@ seaborn
 scikit-learn
 xgboost
 lightgbm
+catboost
+optuna
 shap
 imbalanced-learn
 dowhy
@@ -12,3 +14,6 @@ econml
 jupyter
 ipykernel
 scipy
+fastapi
+uvicorn
+streamlit
