@@ -1,92 +1,127 @@
 # Customer Churn Prediction with Causal Inference
 
-This project provides an end-to-end production-grade data science solution for customer churn. It moves beyond simple prediction by leveraging **Causal Inference** and **Uplift Modeling** to identify interventions that *cause* retention and maximize business ROI.
+An end-to-end churn prediction system that goes beyond correlation — using **Propensity Score Matching**, **Uplift Modeling**, and **Causal Forests** to identify interventions that *cause* retention and quantify their ROI.
 
-##  Key Features
-1. **Advanced Predictive Ensemble:** Voting ensemble of **CatBoost**, **LightGBM**, and **XGBoost** with advanced feature engineering (CLV, Engagement Scores).
-2. **Multi-Treatment Causal Inference:** Rigorous measurement of Average Treatment Effects (ATE) for TechSupport, Contract Upgrades, and Payment Method changes.
-3. **Uplift Modeling (CATE):** Using EconML's Double Robust Learner to estimate heterogeneous treatment effects and identify high-impact customer segments.
-4. **Business ROI Framework:** Quantifiable ROI analysis (e.g., **262% ROI** for targeted contract incentives).
-5. **Production Elements:** Real-time prediction API (FastAPI) and interactive business dashboard (Streamlit).
+## Model Performance
 
-##  Model Performance & Key Findings
-The final **Advanced Ensemble** model achieved:
-- **ROC-AUC:** **83.38%** 
-- **Accuracy:** 78.42%
+The final calibrated voting ensemble (Logistic Regression + Gradient Boosting + XGBoost) achieved:
 
-###  Causal & Business Insights
-- **Contract Upgrades:** The strongest causal driver of retention, reducing churn probability by **33.32%** on average.
-- **TechSupport & Payments:** Provide significant secondary retention effects (10-15% reduction).
-- **Targeted Impact:** Identified high-priority segments where contract upgrades cause a **25.14%+** reduction in churn probability.
+| Metric | Score |
+|---|---|
+| ROC-AUC | **85.2%** |
+| Churn Recall | 75–78% |
+| Churn Precision | 54–56% |
+| Best threshold | 0.31 (F1-optimised) |
 
-##  Business Impact
+> Previous baseline (Advanced Ensemble without interaction features): ROC-AUC 83.4%
 
-This framework enables **data-driven retention strategies** with measurable ROI:
+## Key Findings
 
-### Targeting Strategy
-Instead of offering contract upgrades to all high-risk customers:
-- **Traditional Approach:** 30% intervention cost, 15% retention improvement
-- **Uplift-Optimized Approach:** Target high-CATE segments only
-  - **Cost Reduction:** 40% fewer interventions needed
-  - **Retention Improvement:** 25%+ in priority segments
-  - **Net ROI:** **262%** for contract upgrade campaigns
+### Causal Effects (Propensity Score Matching)
 
-### Key Recommendations
-1. **High Priority (ROI: 262%):** Offer contract upgrade incentives to month-to-month customers with high uplift scores
-2. **Medium Priority (ROI: 145%):** Provide tech support to high-risk customers with moderate uplift
-3. **Optimize Resources:** Avoid interventions for low-uplift segments where treatments show minimal causal effect
+Four treatments were evaluated using PSM to isolate causal effects from confounders:
 
-### Implementation
-The production API enables:
-- Real-time churn risk scoring for customer service teams
-- Automated segmentation for marketing campaigns
-- A/B test evaluation framework for new retention strategies
+| Treatment | Causal Effect on Churn |
+|---|---|
+| Fiber optic internet | **+36.1 percentage points** |
+| Month-to-month contract | +30.4 pp |
+| High monthly charges | +21.3 pp |
+| Low tenure (≤6 months) | +21.2 pp |
 
-##  Project Structure
+Fiber optic + month-to-month is the single highest-risk combination.
+
+### Feature Engineering
+
+Five interaction features were added on top of base features, all confirmed important by SHAP:
+
+- `price_stress` — monthly charges × month-to-month flag
+- `price_tenure_risk` — monthly charges / (tenure + 1)
+- `fiber_contract_risk` — fiber optic × month-to-month
+- `early_customer` — tenure ≤ 6 months
+- `fiber_new_customer` — fiber optic × early customer
+
+### Uplift Segmentation
+
+Customers are segmented by churn probability and individual treatment response:
+
+| Segment | Count | Avg Churn Prob | Strategy |
+|---|---|---|---|
+| Sleeping Dog | 2,889 | 28.5% | Do not contact — negative uplift |
+| Lost Cause | 1,757 | 27.2% | Skip — intervention won't help |
+| **Persuadable** | **1,634** | **66.2%** | **Intervene — highest ROI** |
+| Sure Thing | 763 | 11.0% | Monitor only |
+
+### ROI Analysis
+
+Targeting only the **Persuadable** segment:
+
+| | Value |
+|---|---|
+| Customers targeted | 1,634 |
+| Intervention cost | $207,339 |
+| Net value recovered | $166,262 |
+| **ROI** | **80.2%** |
+| CAC avoided | $139,300 (vs. acquiring 398 replacements at $350 each) |
+
+Targeting other segments produces negative ROI — **Sleeping Dogs in particular should not be contacted**.
+
+## Project Structure
+
 ```
 churn_causal_analysis/
-├── data/               # Raw, processed, and uplift-augmented datasets
-├── notebooks/          # Research & Development
-│   ├── 01_eda.ipynb
-│   ├── 02_feature_engineering_advanced.ipynb
-│   ├── 03_modeling_advanced.ipynb
-│   ├── 04_causal_inference_advanced.ipynb
-├── src/                # Production Modules
-│   ├── api.py          # FastAPI Real-time Prediction Service
-│   ├── dashboard.py    # Streamlit Business Dashboard
-│   ├── causal_analysis.py
-│   ├── data_preprocessing.py
-├── results/            # Performance plots and heatmaps
-├── models/             # Pickled ensemble models
-├── requirements.txt    # Project dependencies
-└── README.md           # Documentation
+├── data/
+│   ├── telco_churn.csv              # Raw dataset (7,043 customers, 21 features)
+│   ├── churn_features.csv           # Fully engineered dataset (35 features)
+│   ├── churn_causal.csv             # + uplift scores from causal models
+│   ├── churn_risk_results.csv       # + risk level, segment, recommended action
+│   └── roi_analysis.csv             # ROI by segment
+├── models/
+│   ├── calibrated_model.pkl         # Final production model
+│   ├── ensemble_model.pkl           # Uncalibrated ensemble
+│   ├── threshold.pkl                # Optimal classification threshold (0.31)
+│   ├── feature_columns.pkl          # Feature list (35 columns)
+│   └── scaler.pkl                   # StandardScaler
+├── notebooks/
+│   ├── 01_eda.ipynb                 # Data cleaning, distributions, key patterns
+│   ├── 02_feature_engineering.ipynb # All feature engineering + train/test split
+│   ├── 03_modeling.ipynb            # 11 baselines, Optuna tuning, ensemble, SHAP
+│   ├── 04_causal_inference.ipynb    # PSM causal effects + uplift modeling
+│   └── 05_business_insights.ipynb  # Risk scoring, segmentation, ROI analysis
+├── src/
+│   ├── api.py                       # FastAPI real-time prediction service
+│   └── dashboard.py                 # Streamlit business dashboard
+└── requirements.txt
 ```
 
-##  Tech Stack
-- **Languages:** Python
-- **ML Frameworks:** Scikit-Learn, XGBoost, LightGBM, CatBoost
-- **Causal Inference:** DoWhy, EconML
-- **Production:** FastAPI, Uvicorn, Streamlit
+## How to Run
 
-## ⚙️ How to Run
-
-### 1. Setup
+### Setup
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Run the Dashboard
-Visualize business segments and ROI:
-```bash
-streamlit run churn_causal_analysis/src/dashboard.py
+### Run notebooks (in order)
+```
+01_eda → 02_feature_engineering → 03_modeling → 04_causal_inference → 05_business_insights
 ```
 
-### 3. Run the API
-Start the real-time prediction service:
-```bash
-uvicorn churn_causal_analysis.src.api:app --host 0.0.0.0 --port 8000
-```
-*Access API docs at http://localhost:8000/docs*
+Pre-trained models are already saved in `models/`. Notebook 03 will load them automatically — skip retraining by running only the **"Load Pre-trained Model"** cell.
 
----
-*Built as a Customer Churn Prediction with Causal Inference project.*
+### Dashboard
+```bash
+streamlit run src/dashboard.py
+```
+
+### Prediction API
+```bash
+uvicorn src.api:app --host 0.0.0.0 --port 8000
+```
+Docs at `http://localhost:8000/docs`
+
+## Tech Stack
+
+- **ML:** scikit-learn, XGBoost, LightGBM, CatBoost, imbalanced-learn (SMOTE)
+- **Tuning:** Optuna
+- **Causal inference:** causalml, econml (CausalForestDML), DoWhy
+- **Explainability:** SHAP
+- **Production:** FastAPI, Streamlit
